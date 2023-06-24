@@ -533,3 +533,736 @@ ModbusStatus_t MODBUS_RTU_MONITOR(unsigned char *mbus_frame_buffer,
 ```
 
 
+## نحوه پیاده سازی تابع پردازش فریم  MODBUS_FARME_PROCESS
+
+این تابع جهت آماده سازی پاسخ به مستر و انجام عملیات مربوطه (نوشتن/خواندن در رجیسترها یا کویل ها) با توجه به فانکشن¬کد می باشد.
+
+### آماده سازی فریم پاسخ به مستر برای فانکشن¬کد 01 Read Coil Status
+
+وضعیت کویل در پیام پاسخ به عنوان یک کویل در هر بیت از فیلد داده بسته بندی می شود.
+پیام کوئری، شروع کویل و تعداد کویل های خوانده شده را مشخص می کند. 
+**نکته**:آدرس کویل ها از صفر شروع می شود: کویل های 1-16 به صورت 0-15 نشان داده می شوند.
+چون باید بیت های مربوط به آرایه ای از بایت ها رو استخراج کنیم
+ابتدا ایندکس شروع آرایه کویل ها رو محاسبه  می کنیم. اگر آدرس کویل شروع را بر هشت تقسیم کنیم شروع ایندکس آرایه بدست می آید و برای محاسبه بیت شروع آن هم، باقی مانده تقسیم بر هشت را حساب می کنیم. 
+
+```C
+
+    int index_coil_mem_array = (Start_Coil / 8);
+    unsigned char S_bit = Start_Coil % 8;
+```
+
+کویل (بیت) 3 تا 14
+
+حالا بایتی که مربوط به آدرس شروع کویل ما هست را در نظر می گیریم اگر کویل یا بیت از ابتدای بایت نبود آن را به همان اندازه (S_bit ) شیفت می دهیم به راست تا به ابتدا بایت آید چون می خواهیم در بایت های پاسخ ذخیره کنیم.
+این شیفت باید در همه بایت های دیگر که کویل ها را در خود دارند هم شیفت داده شوند. 
+بیت های باقی مانده بایت آخر را بدست آوردید و همه آنها باید صفر شوند.
+پس اگر بایت اخر بود به اندازه کویل باقی مانده شیفت داده شود
+
+
+```C
+
+0b00110000 0b11110100
+for(int i=0; i < ByteCount; i++){
+	req[i] =  COIL_MEM [index_coil_mem_array + i] >> S_bit | 
+		COIL_MEM [index_coil_mem_array + i + 1] << (8 - S_bit) ;
+}
+req[1] =  mem[1] >> 2 | mem[2] << 6 ;
+```
+
+**روش دوم**: کویل ها را به صورتی بیتی در بایت های پاسخ ذخیره کنیم برای این کار 
+یک حلقه به اندازه تعداد ByteCount داشته باشیم و داخل یک حلقه به اندازه تعداد بیت های 
+
+کویل n ام بایت n ام mem یک است یا نه
+در بیت n ام بایت n ام پاسخ قراردهد
+
+
+```C
+
+for(int Data_cnt =0; i < ByteCount; Data_cnt++){
+	while(){
+		Constructed_ResponseFrame[i+3] = (COIL_MEM[index_coil_mem_array + Data_cnt] >> S_bit  & 1);
+		S_bit--;
+	}
+{
+```
+
+حالا یک حلقه ایجاد می کنیم و صفر یا یک بودن بیت های آرایه مربوط به کویل را می خوانیم.
+
+while(){
+	if(COIL_MEM[index_coil_mem_array] & (1 << S_bit) == 1)
+}
+
+1. get coil value from mem
+2. set coli value in reponse (in bit located)
+2. 1. bit 0 - 7 then plus array byte
+
+
+```C
+
+#if MAX_COIL > 0
+/**
+ * @brief Reads the ON/OFF status of discrete outputs in the slave.
+ * maximum parameters supported by various controller models:
+ * 184/384:[800 coil]   484:[512 coil]     584/984/884:[2000 coil]    M84:[64 coil]
+ *
+ * @param RequestFrame
+ * @param Constructed_ResponseFrame
+ * @return return Frame length
+ */
+static unsigned char SLAVE_Read_Coil_Status_Operation(
+    unsigned char *RequestFrame, unsigned char *Constructed_ResponseFrame)
+{
+    unsigned int Start_address = RequestFrame[2] << 8 | RequestFrame[3];
+    unsigned int Num_of_coil = RequestFrame[4] << 8 | RequestFrame[5];
+    unsigned int Start_Coil = Start_address;
+
+    if (Start_address + Num_of_coil > MAX_COIL)
+        return Modbus_Exception(ILLEGAL_DATA_ADDRESS, Constructed_ResponseFrame);
+
+    /* Constructing the response frame to the master */
+    Constructed_ResponseFrame[0] = RequestFrame[0]; /* Slave Address */
+    Constructed_ResponseFrame[1] = RequestFrame[1]; /* Function Code */
+
+    unsigned int Byte_Count = 0; /*< [unsigned char] For 2000 coil, Maximum byte: 250 + 5 = 255 */
+    unsigned int array_byte = 3; /*< [unsigned char] For 2000 coil, Maximum byte: 250 + 3 = 253 */
+
+    unsigned int coil_counter = Start_Coil;
+    unsigned char coil = 0;
+    char bit = 0;
+    int Coil_len = Num_of_coil;
+
+    while (Coil_len--)
+    {
+        if (bit == 0)
+            Byte_Count++;
+
+        /* 1. Get coil value from COIL_MEM. note: coils 1–16 are addressed as 0–15 (coil_counter % 8) */
+        coil = (COIL_MEM[(coil_counter / 8)] >> coil_counter % 8) & 1;
+
+        /* 2. Set coil in response (in bit located) */
+        if (coil == 1)
+            Constructed_ResponseFrame[array_byte] |= (1 << bit);
+        else
+            Constructed_ResponseFrame[array_byte] &= ~(1 << bit);
+
+        /* 2.1 bit 0 - 7 then plus array byte */
+        if (bit++ == 7)
+        {
+            bit = 0;
+            array_byte++;
+        }
+
+        coil_counter++;
+    }
+
+    Constructed_ResponseFrame[2] = Byte_Count; /* Byte Count */
+
+    return 3 + Byte_Count;
+}
+#endif
+```
+
+
+### آماده سازی فریم پاسخ به مستر برای فانکشن¬کد 02 Read Input Status
+
+```C
+
+#if MAX_INPUT > 0
+/**
+ * @brief Reads the ON/OFF status of discrete inputs in the slave.
+ * maximum parameters supported by various controller models:
+ * 184/384:[800 coil]   484:[512 coil]     584/984/884:[2000 coil]    M84:[64 coil]
+ *
+ * @param RequestFrame
+ * @param Constructed_ResponseFrame
+ * @return return Frame length
+ */
+static unsigned char SLAVE_Read_Input_Status_Operation(
+    unsigned char *RequestFrame, unsigned char *Constructed_ResponseFrame)
+{
+    unsigned int Start_address = RequestFrame[2] << 8 | RequestFrame[3];
+    unsigned int Num_of_Input = RequestFrame[4] << 8 | RequestFrame[5];
+    unsigned int Start_Input = Start_address;
+
+    if (Start_address + Num_of_Input > MAX_INPUT)
+        return Modbus_Exception(ILLEGAL_DATA_ADDRESS, Constructed_ResponseFrame);
+
+    /* Constructing the response frame to the master */
+    Constructed_ResponseFrame[0] = RequestFrame[0]; /* Slave Address */
+    Constructed_ResponseFrame[1] = RequestFrame[1]; /* Function Code */
+
+    unsigned int Byte_Count = 0; /*< [unsigned char] For 2000 input, Maximum byte: 250 + 5 = 255 */
+    unsigned int array_byte = 3; /*< [unsigned char] For 2000 input, Maximum byte: 250 + 3 = 253 */
+
+    unsigned int Input_counter = Start_Input;
+    unsigned char Input = 0;
+    char bit = 0;
+    int Input_len = Num_of_Input;
+
+    while (Input_len--)
+    {
+        if (bit == 0)
+            Byte_Count++;
+
+        /* 1. Get Input value from INPUT_MEM. note: Inputs 1–16 are addressed as 0–15 (Input_counter % 8) */
+        Input = (INPUT_MEM[(Input_counter / 8)] >> Input_counter % 8) & 1;
+
+        /* 2. Set input in response (in bit located) */
+        if (Input == 1)
+            Constructed_ResponseFrame[array_byte] |= (1 << bit);
+        else
+            Constructed_ResponseFrame[array_byte] &= ~(1 << bit);
+
+        /* 2.1 bit 0 - 7 then plus array byte */
+        if (bit++ == 7)
+        {
+            bit = 0;
+            array_byte++;
+        }
+
+        Input_counter++;
+    }
+
+    Constructed_ResponseFrame[2] = Byte_Count; /* Byte Count */
+
+    return 3 + Byte_Count;
+}
+#endif
+```
+
+### آماده سازی فریم پاسخ به مستر برای فانکشن¬کد 03 Read Holding Registers
+
+```C
+
+#if MAX_HOLDING_REGISTERS > 0
+/**
+ * @brief Reads the binary contents of holding registers in the slave.
+ * maximum parameters supported by various controller models:
+ * 184/384:[100 holding registers]   484:[254 holding registers]
+ * 584/984/884:[125 holding registers]    M84:[64 holding registers]
+ *
+ * @note Note: Data is scanned in the slave at the rate of 125 registers per scan for
+ *  984–X8X controllers (984–685, etc), and at the rate of 32 registers per scan for
+ * all other controllers. The response is returned when the data is completely assembled
+ * @param RequestFrame
+ * @param Constructed_ResponseFrame
+ * @return return Frame length
+ */
+static unsigned char SLAVE_Read_Holding_Registers_Operation(
+    unsigned char *RequestFrame, unsigned char *Constructed_ResponseFrame)
+{
+    unsigned int Start_address = RequestFrame[2] << 8 | RequestFrame[3];
+    unsigned int Num_of_Holding_Registers = RequestFrame[4] << 8 | RequestFrame[5];
+    unsigned int Start_Holding_Registers = Start_address;
+
+    if (Start_address + Num_of_Holding_Registers > MAX_HOLDING_REGISTERS)
+        return Modbus_Exception(ILLEGAL_DATA_ADDRESS, Constructed_ResponseFrame);
+
+    /* Constructing the response frame to the master */
+    Constructed_ResponseFrame[0] = RequestFrame[0]; /* Slave Address */
+    Constructed_ResponseFrame[1] = RequestFrame[1]; /* Function Code */
+
+    unsigned int Byte_Count = Num_of_Holding_Registers * 2; /* Byte Count */
+
+    int Holding_Registers_len = Num_of_Holding_Registers;
+    unsigned int Holding_Registers_count = Start_Holding_Registers;
+    unsigned int byte = 3;
+
+    while (Holding_Registers_len--)
+    {
+        Constructed_ResponseFrame[byte++] =
+            HOLDING_REGISTERS_MEM[Holding_Registers_count] >> 8; /* Hi Holding Registers */
+
+        Constructed_ResponseFrame[byte++] = 0x00ff & HOLDING_REGISTERS_MEM[Holding_Registers_count]; /* Lo Holding Registers */
+
+        Holding_Registers_count++;
+    }
+
+    Constructed_ResponseFrame[2] = Byte_Count; /* Byte Count */
+
+    return 3 + Byte_Count;
+}
+#endif
+```
+
+## پیاده سازی تایم اوت یا مهلت زمانی برای تابع مانیتور شبکه مدباس در محیط cubeide برای میکروکنترلرهای STM32
+
+```C
+
+	/* Init tickstart for timeout management */
+	tickstart_for_monitor_timeout = *Tick;
+	while (1) {
+		/* 0. Check for monitor function timeout */
+		currenttick_for_monitor_timeout = *Tick;
+		if (currenttick_for_monitor_timeout - tickstart_for_monitor_timeout > monitor_fun_timeout)
+			return MODBUS_MONITOR_TIMEOUT;
+```
+
+## نحوه فراخوانی توابع مانیتور شبکه مدباس و پردازش، در بدنه اصلی برنامه
+
+
+```C
+
+	while (1) {
+
+		ModbusStatus_t res = MODBUS_RTU_MONITOR(buff, 1800, receive_uart,
+				&uwTick);
+
+		if (res == MODBUS_OK) {
+			uint16_t len = MODBUS_FARME_PROCESS(buff, response);
+
+			HAL_UART_Transmit(&huart1, response, len, 100);
+		} else if (res == MODBUS_MONITOR_TIMEOUT) {
+			HAL_UART_Transmit(&huart1, (uint8_t*) "MODBUS MONITOR TIMEOUT", 22,
+					100);
+		}
+
+		/* USER CODE END WHILE */
+
+		/* USER CODE BEGIN 3 */
+	}
+```
+
+## تابع کال بک خواندن از یوارت
+
+تعریف توابع کالبک دریافت یوارت در کتابخانه مدباس به صورت weak تا کاربر این توابع را برای پیاده سازی در برنامه خود استفاده کند. 
+
+
+```C
+
+/**
+ * @brief
+ * NOTE : This function should not be modified, when the callback is needed,
+ the uart_receive could be implemented in the user file
+ * @return __weak
+ */
+__attribute__((weak))   ModbusStatus_t uart_receive(uint8_t *Data) {
+	return 0;
+}
+```
+
+Example:
+
+```C
+
+/* USER CODE BEGIN PFP */
+ModbusStatus_t uart_receive(uint8_t *Data) {
+	ModbusStatus_t res ;
+	res = (ModbusStatus_t) HAL_UART_Receive(&huart1, Data, 1, 3000);
+	return res;
+}
+```
+
+بررسی  crc انجام شود که اگر یکی نبود بافر را پاک کند و دوباره تابع مانیتور شبکه را فراخوانی کند.
+
+```C
+
+/* Check CRC calculated, that is equal with CRC frame */
+	if (calculate_crc != frameCRC) {
+		/* clear buffer */
+		while(starting_address_of_buffer < mbus_frame_buffer){
+			*mbus_frame_buffer-- = 0x00;
+		}
+		/* return to 0. */
+		MODBUS_RTU_MONITOR(starting_address_of_buffer, monitor_fun_timeout, Tick);
+		//return MODBUS_ERROR;
+	}
+```
+
+## پیاده سازی مهلت زمانی بین فریم ها 
+تا زمانی که در داخل حلقه بایتی از یوارت دریاقت میشود پس شبکه در حال ردوبدل داده هست و سکوت برقرار نیست. اگر دریافت نداشت و مقدار برگشتی آن اررور مهلت زمانی بود از حلقه خارج شود، در نتیجه می توان از بایت نخست فریم جدید را دریافت کرد. برای اینکار  در یک حلقه منتظر می مانیم تا یک بایت دریافت شود دقت داشته باشید که ر این حلقه باید مهلت زمانی تابع بررسی شود.
+
+```C
+		/* frame timeout management */
+		do {
+			res = (*receive_uart_fun)(&rec_byte);..
+		} while (res == MODBUS_OK);
+
+
+		/* 2. Ready for receive of first Byte (Address Field) */
+		do {
+			res = (*receive_uart_fun)(&rec_byte);
+			currenttick_for_monitor_timeout = *Tick;
+			if (currenttick_for_monitor_timeout - tickstart_for_monitor_timeout
+					> monitor_fun_timeout)
+				return MODBUS_MONITOR_TIMEOUT;
+		} while (res != MODBUS_OK);
+```
+
+**خطاهایی که در حلقه مهلت زمانی تابع مانیتور رخ می دهد و باید به ابتدای حلقه برگردد**
+
+1.	آدرس دستگاه کنونی نیست.
+2.	مهلت زمانی دریافت بایت رخ دهد یعنی بین بایت های دریافتی فاصله ایجاد شود.
+3.	crc یکی نباشد.
+برای موارد 2 و 3 باید بافر پاک شود بعد continue شود.
+
+
+**به موارد بالا سریز بافر برای بررسی اضافه شود**
+
+**پین دایرکشن**
+
+برای مد RS-485 باید یک پین به عنوان دایرکشن انتقال داده در نظر گرفته شود. برای ارسال، منطق یک و برای دریافت، منطق صفر شود.
+
+**تا به اینجا تابع مانیتور شبکه مدباس در بدنه اصلی برنامه فراخوانی می شود و در آن**
+
+1.	در حلقه وایل مهلت زمانی مانیتور بررسی میشود.
+2.	تا زمانی که بایت دریافت می کند در یک حلقه باشد تا مهلت زمانی برای دریافت بایت رخ دهد. (یعنی اگر از قبل فریمی در حال ارسال است صبر کنیم تا تمام شود)
+3.	بعد از مرحله 2 برای دریافت اولین بایت در یک حلقه صبر کنیم تا بایت دریافت شود در این حلقه مهلت زمانی مانیتور شبکه بررسی شود.
+4.	در صورتی که آدرس در محدوده مجاز یا هم آدرس ما یا پخش همگانی نبود به شماره 1 برگردد.
+5.	بایت دریافتی (آدرس) را در بافر ذخیره کند و crc محاسبه شود.
+نکته: از شماره 5 به بعد هر بار که یک بایت دریافت می شود نباید مهلت زمانی دریافت بایت رخ دهد واگر رخ دهد باید به شماره 1 برگردد. بنابراین قبل از ذخیره در بافر و محاسبه crc مهلت زمانی بررسی شود.
+6.	بایت فانکشن رو دریافت و براساس آن تعداد بایت هایی که بعد از آن باید دریافت کند را مشخص کند
+7.	بعد از دریافت بایت های قبل از crc براساس فانکشن¬کد دو بایت crc دریافت شود
+8.	crc محاسبه شده با crc  دریافتی از فریم مقایسه شود اگر یکی نبو د بافر پاک شودو به شماره 1 برگردد.
+9.	فریم دریافتی برای پردازش به تابع پردازش جهت اعمال عملیات و آماده سازی فریم پاسخ به مستر ارسال می شود.
+10.	فریم پاسخ آماده شده توسط مرحله قبل ارسال شود.
+
+
+## پیاده سازی تابع آماده سازی فریم پاسخ به مستر برای فانکشن¬کد 15 (0F Hex) Force Multiple Coils
+
+دوبایت دوبایت انجام می شود
+بایت اولی که ارسال شده کویل های پایین تر هستند (بیت پایین کویل پایین تر)
+بایت بعدی که ارسال شده کویل های بالاتر می شوند
+مثلا اگر 4 بایت بود و کویل شروع 27 بود میشود
+بایت اول، کویل های 27-33
+بایت دوم، کویل های 34-40
+
+به کمک آدرس شروع و تعداد کویل ها انجام می دهیم
+
+
+```C
+
+#if MAX_COIL > 0
+/**
+ * @brief Forces each coil in a sequence of coils to either ON or OFF.
+ *
+ * @param RequestFrame
+ * @param Constructed_ResponseFrame
+ * @return return Frame length
+ */
+static unsigned char SLAVE_Force_Multiple_Coils_Operation(
+    unsigned char *RequestFrame, unsigned char *Constructed_ResponseFrame)
+{
+    unsigned int Start_address = RequestFrame[2] << 8 | RequestFrame[3];
+    unsigned int Quantity_of_Coils = RequestFrame[4] << 8 | RequestFrame[5];
+
+    if (Start_address + Quantity_of_Coils > MAX_COIL)
+        return Modbus_Exception(ILLEGAL_DATA_ADDRESS, Constructed_ResponseFrame);
+
+    unsigned int coil_counter = Start_address;
+    char bit = 0;
+    unsigned int Byte_Counter = 0;
+    unsigned char coil;
+
+    /* Write */
+    while (coil_counter < Quantity_of_Coils + Start_address)
+    {
+        /* 1. Get coil value from data frame. */
+        coil = (RequestFrame[7 + Byte_Counter] >> bit % 8) & 1;
+
+        /* 2. Set coli's in COIL_MEM (in bit located) */
+        if (coil == 1)
+            COIL_MEM[coil_counter / 8] |= (1 << coil_counter % 8);
+        else
+            COIL_MEM[coil_counter / 8] &= ~(1 << coil_counter % 8);
+
+        /* 2.1 bit 0 - 7 then plus array byte */
+        if (bit++ == 7)
+        {
+            bit = 0;
+            Byte_Counter++;
+        }
+
+        coil_counter++;
+    }
+
+    /* The normal response returns the slave address, function code, starting address,
+     and quantity of coils forced. */
+    Constructed_ResponseFrame[0] = RequestFrame[0]; /* Slave Address */
+    Constructed_ResponseFrame[1] = RequestFrame[1]; /* Function Code */
+    Constructed_ResponseFrame[2] = RequestFrame[2]; /* Coil Address Hi */
+    Constructed_ResponseFrame[3] = RequestFrame[3]; /* Coil Address Lo */
+    Constructed_ResponseFrame[4] = RequestFrame[4]; /* Quantity of Coils Hi */
+    Constructed_ResponseFrame[5] = RequestFrame[5]; /* Quantity of Coils Lo */
+
+    return 6; //
+}
+#endif
+```
+
+## پیاده سازی تابع آماده سازی فریم پاسخ به مستر برای فانکشن¬کد  16 (10 Hex) Preset Multiple Registers 
+
+```C
+
+#if MAX_HOLDING_REGISTERS > 0
+/**
+ * @brief Presets values into a sequence of holding registers. When broadcast,
+ * the function presets the same register references in all attached slaves.
+ *
+ * @param RequestFrame
+ * @param Constructed_ResponseFrame
+ * @return return Frame length
+ */
+static unsigned char SLAVE_Preset_Multiple_Register_Operation(
+    unsigned char *RequestFrame, unsigned char *Constructed_ResponseFrame)
+{
+    unsigned int Start_address = RequestFrame[2] << 8 | RequestFrame[3];
+    unsigned int Number_of_Registers = RequestFrame[4] << 8 | RequestFrame[5];
+
+    if (Start_address + Number_of_Registers > MAX_HOLDING_REGISTERS)
+        return Modbus_Exception(ILLEGAL_DATA_ADDRESS, Constructed_ResponseFrame);
+
+    unsigned int registers_counter = Start_address;
+    unsigned int Byte_Counter = 7;
+
+    /* Write */
+    while (registers_counter < Number_of_Registers + Start_address)
+    {
+        HOLDING_REGISTERS_MEM[registers_counter] = RequestFrame[Byte_Counter++] << 8;
+        HOLDING_REGISTERS_MEM[registers_counter] |= RequestFrame[Byte_Counter++];
+        registers_counter++;
+    }
+
+    /*
+     The normal response returns the slave address, function code, starting address,
+     and quantity of registers preset. */
+    Constructed_ResponseFrame[0] = RequestFrame[0]; /* Slave Address */
+    Constructed_ResponseFrame[1] = RequestFrame[1]; /* Function Code */
+    Constructed_ResponseFrame[2] = RequestFrame[2]; /* Coil Address Hi */
+    Constructed_ResponseFrame[3] = RequestFrame[3]; /* Coil Address Lo */
+    Constructed_ResponseFrame[4] = RequestFrame[4]; /* No. of Registers Hi */
+    Constructed_ResponseFrame[5] = RequestFrame[5]; /* No. of Registers Lo */
+
+    return 6;
+}
+#endif
+```
+
+**1.	کانفیگ حافظه وضعیت کویل ها، وضعیت ورودی ها، رجیسترهای نگه¬دارنده و رجیسترهای ورودی:**
+
+**2.	کانفیگ نوع مانیتور شبکه مدباس:**
+
+```C
+
+typedef enum  {
+	Listen_Only = 0,
+	Normal = 1
+} ModbusMonitorMode_t;
+
+```
+**عملیات نوشتن/خواندن روی چه مواردی انجام میشود:**
+
+1.	وضعیت سیم پیچ ها (کویل ها)
+2.	وضعیت ورودی ها
+3.	رجیسترهای نگه دارنده
+4.	رجیسترهای ورودی
+
+
+## نحوه استفاده از کتابخانه مدباس  (ورژن فعلی)
+
+**توجه**: این کتابخانه برای میکروکنترلر استفاده می شود.
+
+```C
+
+set_slave_ID(17);
+```
+
+### راه اندازی ارتباط سریال 
+
+1.	شماره پورت (آدرس رجیستر یوارت در میکروکنترلر)
+2.	مقداردهی باودریت
+3.	پریتی
+4.	استاپ بیت
+
+
+```C
+Serial_t default_serial;
+default_serial.UART = (uint32_t*) USART1;
+default_serial.BaudRate = 9600;
+default_serial.Parity = NONE_PARITY;
+default_serial.StopBit = StopBit_1;
+
+modbus_serial_init(&default_serial);
+
+```
+
+### تنظیم حافظه برای رجیستر های(نگه دارنده و ورودی) و کویل ها و ورودی های مجزا 
+
+تنظیم میزان فضای ذخیره برای 
+•	کویل (درصورت استفاده کاربر)
+•	ورودی مجزا (درصورت استفاده کاربر)
+•	رجیستر نگه دارنده (درصورت استفاده کاربر)
+•	رجیستر ورودی (درصورت استفاده کاربر)
+
+برای این کار در کتابخانه modbus.h دیفاین های زیر را در این فایل با توجه به نیاز برنامه خود تغییر دهید.
+
+```C
+
+/* Modbus memory map for COIL, INPUT, HOLDING_REGISTERS, INPUT_REGISTERS */
+#define MAX_COIL      				8 	/*< 184/384:[800]   484:[512]     584/984/884:[2000]    M84:[64] */
+#define MAX_INPUT      				0 		/*< 184/384:[800]   484:[512]     584/984/884:[2000]    M84:[64] */
+#define MAX_HOLDING_REGISTERS       8 	/*< 184/384:[100]   484:[254]     584/984/884:[125]    M84:[64] */
+#define MAX_INPUT_REGISTERS         0 		/*< 184/384:[100]   484:[32]     584/984/884:[125]    M84:[4] */
+
+```
+
+**نکته**: در زمان اعمال دستورات مستر، باید به حداگثر تعداد (کویل، رجیستر و...) توجه کرد و در صورت نیاز پاسخ استثنا آماده کرد.
+
+
+1.	اول باید بررسی شود که آیا در این دستگاه حافظه ای برای آن در نظر گرفته شده است یا نه؟
+2.	دوم اگر هم حافظه ای هم موجود بود نباید بیشتر از تعداد آن برای خواندن و یا نوشتن از سمت مستر درخواست شود. 
+
+در صورتی که موارد بالا نقض شد پاسخ استثنا تولید شود. (به عنوان مثال، اگر درخواست خواندن یک کویل یا رجیستر ناموجود باشد)، Slave یک پاسخ استثنایی را برمی‌گرداند که به مستر از ماهیت خطا اطلاع می‌دهد.
+
+
+## آماده سازی پاسخ استثنا برای مستر
+
+```C
+
+/**
+ * @brief
+ *
+ * @param Modbus_Exception
+ * @param ResponseFrame
+ * @return return Frame length
+ */
+unsigned char Modbus_Exception(Modbus_Exception_Code_t Modbus_Exception_Code, unsigned char *ResponseFrame)
+{
+    ResponseFrame[0] = SLAVE_ADDRESS;         /* Slave Address */
+    ResponseFrame[1] = 0x81;                  /* Function */
+    ResponseFrame[2] = Modbus_Exception_Code; /* Exception Code */
+
+    return 3;
+}
+```
+
+
+سپس در برنامه از تابع مانیتور شبکه مدباس استفاده میکنیم
+
+این تابع با توجه به تنظیمات بالا فریم مربوط به این دستگاه را از سریال دریافت می کند، پردازش می کند و دستورات را اعمال می کند(خواندن/نوشتن روی رجیسترها یا کویل ها)و پاسخ و یا پاسخ استثنا را برای مستر آماده می کند و از طریق سریال ارسال می کند.
+
+```C
+
+/* Modbus network monitor to receive frames from the master device */
+ModbusStatus_t res = MODBUS_RTU_MONITOR(buff, 3000, &uwTick, Normal);
+
+```
+
+**بعد از این تابع، کاربر می تواند مقادیر حافظه رجیستر ها و کویل ها را با مقادیر قبلی مقایسه کند (در صورتی که از سوی مستر روی حافظه دستور نوشتن صورت گرفته باشد) اگر تغییری وجود داشت، روی خروجی های برنامه مثلا رله ها اعمال شود.**
+
+## نحوه استفاده از توابع Handler (نسخه فعلی)
+
+توابع Handler را از کتابخانه modbus_handler.c کپی کنید و از آن در فایل خود برای پیاده سازی استفاده کنید.
+
+```C
+
+/**
+ * @file modbus_handler.h
+ * @author Mehdi Adham (mehdi.adham@yahoo.com)
+ * @brief This library Handle the Modbus Communication.
+ * @version 0.1
+ * @date 2022-08-29
+ *
+ * @copyright Copyright (c) 2022
+ *
+ */
+
+
+#ifndef __MODBUS_HANDLER_H
+#define __MODBUS_HANDLER_H
+
+/**
+ * @brief
+ * NOTE : This function should not be modified, when the callback is needed,
+ the uart_receive Handler could be implemented in the user file
+ * @return Modbus Status
+ */
+__attribute__((weak))	  ModbusStatus_t modbus_uart_receive_Handler(uint8_t *Data) {
+	return 0;
+}
+
+/**
+ * @brief
+ * NOTE : This function should not be modified, when the callback is needed,
+ the uart transmit Handler could be implemented in the user file
+ * @return None
+ */
+__attribute__((weak)) void modbus_uart_transmit_Handler(uint8_t *Data,
+		uint16_t length) {
+
+}
+
+/**
+ * @brief
+ * NOTE : This function should not be modified, when the callback is needed,
+ the uart_init Handler could be implemented in the user file
+ * @return Modbus Status
+ */
+__attribute__((weak)) void modbus_uart_init_Handler(Serial_t *Serial) {
+
+}
+
+
+#endif
+```
+
+**نمونه ای از پیاده سازی Handler برای کتابخانه HAL (STM32)**
+
+```C
+
+ModbusStatus_t modbus_uart_receive_Handler(uint8_t *Data) {
+	ModbusStatus_t res;
+	res = (ModbusStatus_t) HAL_UART_Receive(&huart1, Data, 1, timeout_3_5C);
+	return res;
+}
+
+void modbus_uart_transmit_Handler(uint8_t *Data, uint16_t length) {
+	HAL_Delay(5);
+	HAL_UART_Transmit(&huart1, Data, length, 100);
+}
+
+void modbus_uart_init_Handler(Serial_t *Serial) {
+	huart1.Instance = (USART_TypeDef*) Serial->UART;
+	huart1.Init.BaudRate = Serial->BaudRate;
+
+	if (Serial->StopBit == StopBit_1)
+		huart1.Init.StopBits = UART_STOPBITS_1;
+	else
+		huart1.Init.StopBits = UART_STOPBITS_2;
+
+	if (Serial->Parity == NONE_PARITY)
+		huart1.Init.Parity = UART_PARITY_NONE;
+	else if (Serial->Parity == ODD_PARITY)
+		huart1.Init.Parity = UART_PARITY_ODD;
+	else
+		huart1.Init.Parity = UART_PARITY_EVEN;
+
+	huart1.Init.WordLength = UART_WORDLENGTH_8B;
+	huart1.Init.Mode = UART_MODE_TX_RX;
+	huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+	huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+
+	HAL_UART_Init(&huart1);
+}
+```
+
+
+
+## تغییر پین DIR
+
+ برای پین دایرکشن آی سی 485 نیاز به تابع هندلر نیست در تابع هندلر ارسال یوارت، قبل و بعد از ارسال پین را تغییر می دهیم:
+
+```C
+
+void modbus_uart_transmit_Handler(uint8_t *Data, uint16_t length) {
+	HAL_Delay(5);
+	HAL_GPIO_WritePin(DIR_GPIO_Port, DIR_Pin, GPIO_PIN_SET);
+	HAL_UART_Transmit(&huart1, Data, length, 100);
+	HAL_GPIO_WritePin(DIR_GPIO_Port, DIR_Pin, GPIO_PIN_RESET);
+}
+```
+
+**نکته: سرریز بافر دریافت فریم در تابع مانیتور بررسی شود حتما. حداکثر 256 بایت است. بیشتر از آن بافر پاک شود و از تابع خارج شود. با مقدار برگشتی وضعیت مانیتور سریز بافر**
+
+
+**آدرس 0 پخش همگانی تست شود نباید پاسخ داده شود.**
