@@ -541,56 +541,30 @@ ModbusStatus_t MODBUS_RTU_MONITOR(unsigned char *mbus_frame_buffer,
 
 وضعیت کویل در پیام پاسخ به عنوان یک کویل در هر بیت از فیلد داده بسته بندی می شود.
 پیام کوئری، شروع کویل و تعداد کویل های خوانده شده را مشخص می کند. 
+
 **نکته**:آدرس کویل ها از صفر شروع می شود: کویل های 1-16 به صورت 0-15 نشان داده می شوند.
+
 چون باید بیت های مربوط به آرایه ای از بایت ها رو استخراج کنیم
 ابتدا ایندکس شروع آرایه کویل ها رو محاسبه  می کنیم. اگر آدرس کویل شروع را بر هشت تقسیم کنیم شروع ایندکس آرایه بدست می آید و برای محاسبه بیت شروع آن هم، باقی مانده تقسیم بر هشت را حساب می کنیم. 
 
 ```C
 
-    int index_coil_mem_array = (Start_Coil / 8);
-    unsigned char S_bit = Start_Coil % 8;
+ /* 1. Get coil value from COIL_MEM. note: coils 1–16 are addressed as 0–15 (coil_counter % 8) */
+        coil = (COIL_MEM[(coil_counter / 8)] >> coil_counter % 8) & 1;
 ```
 
-کویل (بیت) 3 تا 14
-
-حالا بایتی که مربوط به آدرس شروع کویل ما هست را در نظر می گیریم اگر کویل یا بیت از ابتدای بایت نبود آن را به همان اندازه (S_bit ) شیفت می دهیم به راست تا به ابتدا بایت آید چون می خواهیم در بایت های پاسخ ذخیره کنیم.
-این شیفت باید در همه بایت های دیگر که کویل ها را در خود دارند هم شیفت داده شوند. 
-بیت های باقی مانده بایت آخر را بدست آوردید و همه آنها باید صفر شوند.
-پس اگر بایت اخر بود به اندازه کویل باقی مانده شیفت داده شود
-
-
-```C
-
-0b00110000 0b11110100
-for(int i=0; i < ByteCount; i++){
-	req[i] =  COIL_MEM [index_coil_mem_array + i] >> S_bit | 
-		COIL_MEM [index_coil_mem_array + i + 1] << (8 - S_bit) ;
-}
-req[1] =  mem[1] >> 2 | mem[2] << 6 ;
-```
-
-**روش دوم**: کویل ها را به صورتی بیتی در بایت های پاسخ ذخیره کنیم برای این کار 
-یک حلقه به اندازه تعداد ByteCount داشته باشیم و داخل یک حلقه به اندازه تعداد بیت های 
-
-کویل n ام بایت n ام mem یک است یا نه
-در بیت n ام بایت n ام پاسخ قراردهد
-
-
-```C
-
-for(int Data_cnt =0; i < ByteCount; Data_cnt++){
-	while(){
-		Constructed_ResponseFrame[i+3] = (COIL_MEM[index_coil_mem_array + Data_cnt] >> S_bit  & 1);
-		S_bit--;
-	}
-{
-```
 
 حالا یک حلقه ایجاد می کنیم و صفر یا یک بودن بیت های آرایه مربوط به کویل را می خوانیم.
 
-while(){
-	if(COIL_MEM[index_coil_mem_array] & (1 << S_bit) == 1)
-}
+```C
+
+/* 2. Set coil in response (in bit located) */
+        if (coil == 1)
+            Constructed_ResponseFrame[array_byte] |= (1 << bit);
+        else
+            Constructed_ResponseFrame[array_byte] &= ~(1 << bit);
+            
+```
 
 1. get coil value from mem
 2. set coli value in reponse (in bit located)
