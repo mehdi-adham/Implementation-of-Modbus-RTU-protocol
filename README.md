@@ -563,13 +563,10 @@ ModbusStatus_t MODBUS_RTU_MONITOR(unsigned char *mbus_frame_buffer,
             Constructed_ResponseFrame[array_byte] |= (1 << bit);
         else
             Constructed_ResponseFrame[array_byte] &= ~(1 << bit);
-            
+
 ```
 
-1. get coil value from mem
-2. set coli value in reponse (in bit located)
-2. 1. bit 0 - 7 then plus array byte
-
+**تابع نهایی:**
 
 ```C
 
