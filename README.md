@@ -272,9 +272,9 @@ void Timer()
 | 2 | 07 Read Exception Status 11 (0B Hex) Fetch Comm Event Counter<br>12 (0C Hex) Fetch Comm Event Log<br>17 (11 Hex) Report Slave ID | <p dir="rtl"> اینجا بعد از فانکشن CRC می آید. </p> |
 | 3 | 15 (0F Hex) Force Multiple Coils <br> 16 (10 Hex) Preset Multiple Registers | <p dir="rtl"> بایت هفتم تعداد بایت های بعد از خودش را مشخص می کند بدون احتساب دو بایت CRC </p>|
 | 4 | 20 (14Hex) Read General Reference <br> 21 (15Hex) Write General Reference | <p dir="rtl"> بایت سوم تعداد بایت های بعد از خودش را مشخص می کند بدون احتساب دو بایت CRC </p> |
-| 5 | 22 (16Hex) Mask Write 4X Register | اینجا بعد از فانکشن مشخصا 6 بایت دیگر دریافت می کند بدون احتساب دو بایت CRC |
-| 6 | 23 (17Hex) Read/Write 4X Registers | بایت یازدهم تعداد بایت های بعد از خودش را مشخص می کند بدون احتساب دو بایت CRC |
-| 7 | 24 (18Hex) Read FIFO Queue | اینجا بعد از فانکشن مشخصا 2 بایت دیگر دریافت می کند بدون احتساب دو بایت CRC |
+| 5 | 22 (16Hex) Mask Write 4X Register | <p dir="rtl"> اینجا بعد از فانکشن مشخصا 6 بایت دیگر دریافت می کند بدون احتساب دو بایت CRC </p>  |
+| 6 | 23 (17Hex) Read/Write 4X Registers | <p dir="rtl"> بایت یازدهم تعداد بایت های بعد از خودش را مشخص می کند بدون احتساب دو بایت CRC  </p>  |
+| 7 | 24 (18Hex) Read FIFO Queue |  <p dir="rtl">  اینجا بعد از فانکشن مشخصا 2 بایت دیگر دریافت می کند بدون احتساب دو بایت CRC  </p> |
 
 
 8.	بعد از محاسبه طول بایت های بعدی(بدون احتساب دو بایت crc)، بایت های بعدی را داخل حلقه وایل دریافت می کنیم. عملیات داخل حلقه:
