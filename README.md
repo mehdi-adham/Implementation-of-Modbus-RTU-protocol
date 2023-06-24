@@ -11,7 +11,9 @@ typedef enum Serial_Transmission_Modes {
 	ASCII
 } Serial_Transmission_Modes_t;
 ```
+
 2. کاربران مد مورد نظر را به همراه پارامترهای ارتباطی پورت سریال (نرخ baud، مد parity و غیره) در طول پیکربندی هر کنترلر انتخاب می کنند. پارامترهای مد و سریال باید برای همه دستگاه های موجود در یک شبکه Modbus یکسان باشد.
+
 
 ```C
 
@@ -266,8 +268,8 @@ void Timer()
 
 | ردیف | دستورات | توضیحات |
 | --- | --- | --- |
-| 1 | 01 Read Coil Status  <br> 02 Read Input Status <br>03 Read Holding Registers <br> 04 <br>Read Input Registers <br>05 Force Single Coil<br>06 Preset Single Register | اینجا بعد از فانکشن مشخصا 4 بایت دیگر دریافت می کند بدون احتساب دو بایت CRC |
-| 2 | 07 Read Exception Status 11 (0B Hex) Fetch Comm Event Counter<br>12 (0C Hex) Fetch Comm Event Log<br>17 (11 Hex) Report Slave ID | اینجا بعد از فانکشن CRC می آید. |
+| 1 | 01 Read Coil Status  <br> 02 Read Input Status <br>03 Read Holding Registers <br> 04 <br>Read Input Registers <br>05 Force Single Coil<br>06 Preset Single Register <td dir="rtl">اینجا بعد از فانکشن مشخصا 4 بایت دیگر دریافت می کند بدون احتساب دو بایت CRC</td>
+| 2 | 07 Read Exception Status 11 (0B Hex) Fetch Comm Event Counter<br>12 (0C Hex) Fetch Comm Event Log<br>17 (11 Hex) Report Slave ID <td dir="rtl">اینجا بعد از فانکشن CRC می آید.</td>
 | 3 | 15 (0F Hex) Force Multiple Coils <br> 16 (10 Hex) Preset Multiple Registers | بایت هفتم تعداد بایت های بعد از خودش را مشخص می کند بدون احتساب دو بایت CRC |
 | 4 | 20 (14Hex) Read General Reference <br> 21 (15Hex) Write General Reference | بایت سوم تعداد بایت های بعد از خودش را مشخص می کند بدون احتساب دو بایت CRC |
 | 5 | 22 (16Hex) Mask Write 4X Register | اینجا بعد از فانکشن مشخصا 6 بایت دیگر دریافت می کند بدون احتساب دو بایت CRC |
